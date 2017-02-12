@@ -1,0 +1,12 @@
+﻿CREATE TABLE "PerfomanceCounterValues" (
+	"AppId" SMALLINT NOT NULL DEFAULT E'0',
+	"CounterId" SMALLINT NOT NULL,
+	"Timestamp" TIMESTAMP NOT NULL,
+	"Value" REAL NULL DEFAULT NULL,
+	PRIMARY KEY ("AppId", "CounterId", "Timestamp")
+)
+;
+COMMENT ON COLUMN "PerfomanceCounterValues"."AppId" IS E'';
+COMMENT ON COLUMN "PerfomanceCounterValues"."CounterId" IS E'';
+COMMENT ON COLUMN "PerfomanceCounterValues"."Timestamp" IS E'';
+COMMENT ON COLUMN "PerfomanceCounterValues"."Value" IS E'';
