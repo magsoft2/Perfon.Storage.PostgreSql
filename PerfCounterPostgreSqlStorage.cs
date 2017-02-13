@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using Npgsql;
@@ -20,6 +21,9 @@ namespace Perfon.Storage.PostgreSql
 
         private ConcurrentBag<string> counterNames = new ConcurrentBag<string>();
 
+        private bool databaseStructureChecked = false;
+
+
         /// <summary>
         /// Reports about errors and exceptions occured.
         /// </summary>
@@ -36,7 +40,7 @@ namespace Perfon.Storage.PostgreSql
         /// </summary>
         /// <param name="counters"></param>
         /// <returns></returns>
-        public Task StorePerfCounters(IEnumerable<IPerfCounterInputData> counters, DateTime? nowArg = null, string appId = null)
+        public async Task StorePerfCounters(IEnumerable<IPerfCounterInputData> counters, DateTime? nowArg = null, string appId = null)
         {
             try
             {
@@ -70,6 +74,11 @@ namespace Perfon.Storage.PostgreSql
                     {
                         counterId.Clear();
 
+                        if (!databaseStructureChecked)
+                        {
+                            await CheckDbstructure(conn);
+                        }
+                            
                         using (var cmd = new NpgsqlCommand())
                         {
                             cmd.Connection = conn;
@@ -140,10 +149,12 @@ namespace Perfon.Storage.PostgreSql
                 }
             }
 
-            return Task.Delay(0);
+            return;
         }
 
-        public Task<IEnumerable<IPerfCounterValue>> QueryCounterValues(string counterName, DateTime? date = null, int skip = 0, string appId = null)
+        
+
+        public async Task<IEnumerable<IPerfCounterValue>> QueryCounterValues(string counterName, DateTime? date = null, int skip = 0, string appId = null)
         {
             var list = new List<IPerfCounterValue>();
 
@@ -160,16 +171,25 @@ namespace Perfon.Storage.PostgreSql
                 {
                     conn.Open();
 
+                    if (!databaseStructureChecked)
+                    {
+                        await CheckDbstructure(conn);
+                    }                            
+
                     using (var cmd = new NpgsqlCommand())
                     {
                         cmd.Connection = conn;
 
                         var id = (short)(Tools.CalculateHash(counterName) % (ulong)short.MaxValue);
 
-                        cmd.CommandText = @"SELECT ""Timestamp"",""Value"" FROM ""PerfomanceCounterValues"" WHERE ""AppId""=0 AND ""CounterId""=@id AND ""Timestamp"" >= @timestamp AND CAST(""Timestamp"" AS DATE) = @timestamp";
+                        cmd.CommandText = @"SELECT ""Timestamp"",""Value"" FROM ""PerfomanceCounterValues"" 
+WHERE ""AppId""=0 AND ""CounterId""=@id AND ""Timestamp"" >= @timestamp AND CAST(""Timestamp"" AS DATE) = @timestamp ORDER BY ""Timestamp"" OFFSET @skip";
+                        
                         cmd.Parameters.Add("id", NpgsqlTypes.NpgsqlDbType.Smallint).Value = id;
                         cmd.Parameters.Add("timestamp", NpgsqlTypes.NpgsqlDbType.Timestamp).Value = date;
-                        using (var reader = cmd.ExecuteReader())
+                        cmd.Parameters.Add("skip", NpgsqlTypes.NpgsqlDbType.Smallint).Value = skip;
+                        
+                        using (var reader = await cmd.ExecuteReaderAsync())
                         {
                             while (reader.Read())
                             {
@@ -191,10 +211,10 @@ namespace Perfon.Storage.PostgreSql
                 }
             }
 
-            return Task.FromResult(list as IEnumerable<IPerfCounterValue>);
+            return list as IEnumerable<IPerfCounterValue>;
         }
 
-        public Task<IEnumerable<string>> GetCountersList()
+        public async Task<IEnumerable<string>> GetCountersList()
         {
             var res = new List<string>();
 
@@ -203,12 +223,18 @@ namespace Perfon.Storage.PostgreSql
                 using (var conn = new NpgsqlConnection(DbConnectionString))
                 {
                     conn.Open();
+
+                    if (!databaseStructureChecked)
+                    {
+                        await CheckDbstructure(conn);
+                    }
+                            
                     using (var cmd = new NpgsqlCommand())
                     {
                         cmd.Connection = conn;
 
                         cmd.CommandText = @"SELECT ""Name"" FROM ""CounterNames"" ";
-                        using (var reader = cmd.ExecuteReader())
+                        using (var reader = await cmd.ExecuteReaderAsync())
                         {
                             while (reader.Read())
                             {
@@ -226,10 +252,47 @@ namespace Perfon.Storage.PostgreSql
                 }
             }
 
-            return Task.FromResult(res as IEnumerable<string>);
+            return res as IEnumerable<string>;
         }
 
 
+        private string sqlStructureText = "";
+
+        private async Task CheckDbstructure(NpgsqlConnection conn)
+        {
+            if (string.IsNullOrEmpty(sqlStructureText))
+            {
+                var assembly = Assembly.GetExecutingAssembly();
+                var resourceName = "Perfon.Storage.PostgreSql.db_structure.sql";
+
+                try
+                {
+                    using (Stream stream = assembly.GetManifestResourceStream(resourceName))
+                    {
+                        using (StreamReader reader = new StreamReader(stream))
+                        {
+                            sqlStructureText = reader.ReadToEnd();
+                        }
+                    }
+                }
+                catch (Exception exc)
+                {
+                    if (OnError != null)
+                    {
+                        OnError(this, new PerfonErrorEventArgs(exc.ToString()));
+                    }
+                }
+            }
+
+            using (var cmd = new NpgsqlCommand())
+            {
+                cmd.Connection = conn;
+
+                cmd.CommandText = sqlStructureText;
+                await cmd.ExecuteNonQueryAsync();
+            }
+            databaseStructureChecked = true;
+        }
 
     }
 }
