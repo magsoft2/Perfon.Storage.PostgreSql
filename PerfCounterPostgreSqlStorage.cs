@@ -183,13 +183,14 @@ namespace Perfon.Storage.PostgreSql
                         var id = (short)(Tools.CalculateHash(counterName) % (ulong)short.MaxValue);
 
                         cmd.CommandText = @"SELECT ""Timestamp"",""Value"" FROM ""PerfomanceCounterValues"" 
-WHERE ""AppId""=0 AND ""CounterId""=@id AND ""Timestamp"" >= @timestamp AND CAST(""Timestamp"" AS DATE) = @timestamp ORDER BY ""Timestamp"" OFFSET @skip";
+WHERE ""AppId""=0 AND ""CounterId""=@id AND ""Timestamp"" >= @timestamp AND ""Timestamp"" < @timestampNextDay ORDER BY ""Timestamp"" OFFSET @skip";
                         
                         cmd.Parameters.Add("id", NpgsqlTypes.NpgsqlDbType.Smallint).Value = id;
                         cmd.Parameters.Add("timestamp", NpgsqlTypes.NpgsqlDbType.Timestamp).Value = date;
+                        cmd.Parameters.Add("timestampNextDay", NpgsqlTypes.NpgsqlDbType.Timestamp).Value = date.Value.AddDays(1); 
                         cmd.Parameters.Add("skip", NpgsqlTypes.NpgsqlDbType.Smallint).Value = skip;
                         
-                        using (var reader = await cmd.ExecuteReaderAsync())
+                        using (var reader = await cmd.ExecuteReaderAsync(System.Data.CommandBehavior.SequentialAccess))
                         {
                             while (reader.Read())
                             {
