@@ -192,7 +192,7 @@ WHERE ""AppId""=0 AND ""CounterId""=@id AND ""Timestamp"" >= @timestamp AND ""Ti
                         
                         using (var reader = await cmd.ExecuteReaderAsync(System.Data.CommandBehavior.SequentialAccess))
                         {
-                            while (reader.Read())
+                            while (await reader.ReadAsync())
                             {
                                 var timeStamp = reader.GetDateTime(0);
                                 var value = reader.GetFloat(1);
@@ -237,7 +237,7 @@ WHERE ""AppId""=0 AND ""CounterId""=@id AND ""Timestamp"" >= @timestamp AND ""Ti
                         cmd.CommandText = @"SELECT ""Name"" FROM ""CounterNames"" ";
                         using (var reader = await cmd.ExecuteReaderAsync())
                         {
-                            while (reader.Read())
+                            while (await reader.ReadAsync())
                             {
                                 res.Add(reader.GetString(0));
                             }
